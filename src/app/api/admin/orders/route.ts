@@ -91,3 +91,5 @@ export async function PATCH(request: Request) {
   } catch (error) {
     console.error("Could not update order", error);
     return NextResponse.json({ error: "Could not update order." }, { status: 5
+  }   }
+}
