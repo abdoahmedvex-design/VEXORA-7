@@ -44,3 +44,9 @@ export const orderEvents = pgTable(
   },
   (table) => [index("order_events_order_id_idx").on(table.orderId)],
 );
+
+export const siteSettings = pgTable("site_settings", {
+  key: varchar("key", { length: 80 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

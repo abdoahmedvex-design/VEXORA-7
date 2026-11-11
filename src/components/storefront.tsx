@@ -1,17 +1,18 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import AdminCatalog from "@/components/admin-catalog";
 import {
-  categories,
   copy,
-  discountCodes,
+  defaultCatalog,
   formatMoney,
-  products,
   type CategoryId,
   type Locale,
   type Product,
+  type PublicCatalog,
 } from "@/lib/store-data";
+
+type Coupon = { code: string; percent: number; category?: string };
 
 type CartItem = {
   key: string;
@@ -91,16 +92,24 @@ function formatDate(date: string, locale: Locale) {
   });
 }
 
-function ProductCard({ product, locale, onOpen }: {
+function ProductPicture({ src, alt, icon }: { src: string; alt: string; icon: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) return <span className="img-placeholder" aria-hidden="true">{icon}</span>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} />;
+}
+
+function ProductCard({ product, locale, icon, onOpen }: {
   product: Product;
   locale: Locale;
+  icon: string;
   onOpen: (product: Product) => void;
 }) {
   const startingPrice = Math.min(...product.packages.map((item) => item.price));
   return (
     <button className="product-card" type="button" onClick={() => onOpen(product)} aria-label={product.name[locale]}>
       <span className="product-image">
-        <Image src={product.image} alt={product.name[locale]} fill sizes="(max-width: 600px) 45vw, 180px" />
+        <ProductPicture src={product.image} alt={product.name[locale]} icon={icon} />
       </span>
       <span className="product-title">{product.name[locale]}</span>
       <span className="product-price">{formatMoney(startingPrice, locale)}+</span>
@@ -145,7 +154,9 @@ export default function Storefront() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartReady, setCartReady] = useState(false);
   const [couponInput, setCouponInput] = useState("");
-  const [appliedCode, setAppliedCode] = useState("");
+  const [coupon, setCoupon] = useState<Coupon | null>(null);
+  const [catalog, setCatalog] = useState<PublicCatalog>(defaultCatalog);
+  const [adminTab, setAdminTab] = useState<"orders" | "store">("orders");
   const [couponError, setCouponError] = useState("");
   const [checkoutName, setCheckoutName] = useState("");
   const [checkoutPhone, setCheckoutPhone] = useState("");
@@ -169,14 +180,28 @@ export default function Storefront() {
   const [adminBusy, setAdminBusy] = useState(false);
 
   const t = copy[locale];
+  const appliedCode = coupon?.code ?? "";
+  const products = catalog.products;
+  const categories = catalog.categories;
+  const categoryIcon = (id: string) => categories.find((category) => category.id === id)?.icon || "🛍️";
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/catalog")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: PublicCatalog | null) => {
+        if (!cancelled && data && Array.isArray(data.products) && Array.isArray(data.categories) && data.banner) setCatalog(data);
+      })
+      .catch(() => { /* The built-in catalog keeps the store usable offline. */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     try {
       const storedCart = JSON.parse(localStorage.getItem("vexora_cart") || "[]") as CartItem[];
       if (Array.isArray(storedCart)) {
         setCart(storedCart.filter((item) => {
-          const product = products.find((entry) => entry.id === item?.productId);
-          return !!product && Number.isInteger(item.packageIndex) && !!product.packages[item.packageIndex] &&
+          return Number.isInteger(item?.productId) && Number.isInteger(item.packageIndex) && item.packageIndex >= 0 &&
             Number.isInteger(item.quantity) && item.quantity > 0 && item.quantity <= 20 &&
             typeof item.key === "string" && typeof item.playerId === "string";
         }));
@@ -222,7 +247,6 @@ export default function Storefront() {
   }), [cart]);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartDetails.reduce((sum, line) => sum + line.chosen.price * line.item.quantity, 0);
-  const coupon = appliedCode ? discountCodes[appliedCode] : undefined;
   const eligibleSubtotal = cartDetails.reduce((sum, line) =>
     sum + (!coupon?.category || coupon.category === line.product.category ? line.chosen.price * line.item.quantity : 0), 0);
   const discount = coupon ? Math.round(eligibleSubtotal * coupon.percent / 100) : 0;
@@ -260,22 +284,30 @@ export default function Storefront() {
       ? { ...item, quantity: Math.min(20, item.quantity + amount) } : item).filter((item) => item.quantity > 0));
   }
 
-  function applyCoupon() {
+  async function applyCoupon() {
     const value = couponInput.trim().toUpperCase();
-    const found = discountCodes[value];
-    if (!found) {
-      setAppliedCode("");
-      setCouponError(t.invalidCode);
-      return;
+    if (!value) return;
+    try {
+      const response = await fetch("/api/coupon", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: value }),
+      });
+      if (!response.ok) {
+        setCoupon(null);
+        setCouponError(response.status === 404 ? t.invalidCode : t.connectionError);
+        return;
+      }
+      const found = await response.json() as Coupon;
+      if (found.category && !cartDetails.some((line) => line.product.category === found.category)) {
+        setCoupon(null);
+        setCouponError(`${t.wrongCategory} ${categories.find((item) => item.id === found.category)?.name[locale] || ""}`);
+        return;
+      }
+      setCoupon(found);
+      setCouponError("");
+      setToast(locale === "ar" ? "تم تطبيق كود الخصم" : "Discount code applied");
+    } catch {
+      setCouponError(t.connectionError);
     }
-    if (found.category && !cartDetails.some((line) => line.product.category === found.category)) {
-      setAppliedCode("");
-      setCouponError(`${t.wrongCategory} ${categories.find((item) => item.id === found.category)?.name[locale] || ""}`);
-      return;
-    }
-    setAppliedCode(value);
-    setCouponError("");
-    setToast(locale === "ar" ? "تم تطبيق كود الخصم" : "Discount code applied");
   }
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
@@ -310,7 +342,7 @@ export default function Storefront() {
       setTrackPhone(result.phone);
       setTrackedOrder(null);
       setCart([]);
-      setAppliedCode("");
+      setCoupon(null);
       setCouponInput("");
       setModal("confirmation");
     } catch {
@@ -408,6 +440,13 @@ export default function Storefront() {
     }
   }
 
+  const adminTabs = (
+    <div className="admin-tabs">
+      <button type="button" className={`pill-button ${adminTab === "orders" ? "active" : ""}`} onClick={() => setAdminTab("orders")}>{locale === "ar" ? "الطلبات" : "Orders"}</button>
+      <button type="button" className={`pill-button ${adminTab === "store" ? "active" : ""}`} onClick={() => setAdminTab("store")}>{locale === "ar" ? "إدارة المتجر" : "Store"}</button>
+    </div>
+  );
+
   return (
     <div className="site-shell">
       <header className="site-header">
@@ -425,6 +464,8 @@ export default function Storefront() {
           <span aria-hidden="true">🛒</span> <span>{cartCount}</span>
         </button>
       </header>
+
+      {catalog.banner.enabled && catalog.banner.text[locale] && <div className="promo-banner">{catalog.banner.text[locale]}</div>}
 
       <div id="top" className="hero">
         <h1>{t.tagline}</h1>
@@ -456,7 +497,7 @@ export default function Storefront() {
                     <div className="category-body" aria-hidden={!isOpen}>
                       <div className="category-inner">
                         <div className="product-grid">
-                          {categoryProducts.map((product) => <ProductCard key={product.id} product={product} locale={locale} onOpen={openProduct} />)}
+                          {categoryProducts.map((product) => <ProductCard key={product.id} product={product} locale={locale} icon={category.icon} onOpen={openProduct} />)}
                         </div>
                       </div>
                     </div>
@@ -467,7 +508,7 @@ export default function Storefront() {
           ) : (
             <div className="product-grid filtered-products">
               {products.filter((product) => product.category === activeTab).map((product) =>
-                <ProductCard key={product.id} product={product} locale={locale} onOpen={openProduct} />)}
+                <ProductCard key={product.id} product={product} locale={locale} icon={categoryIcon(product.category)} onOpen={openProduct} />)}
             </div>
           )}
         </section>
@@ -506,7 +547,10 @@ export default function Storefront() {
               <div className="tracking-items">
                 {trackedOrder.items.map((item, index) => (
                   <div className="tracking-item" key={`${item.productId}-${index}`}>
-                    <Image src={item.image} alt="" width={54} height={36} />
+                    {item.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.image} alt="" width={54} height={36} />
+                    )}
                     <span>{locale === "ar" ? item.productNameAr : item.productNameEn} — {locale === "ar" ? item.packageAr : item.packageEn} × {item.quantity}</span>
                   </div>
                 ))}
@@ -530,14 +574,19 @@ export default function Storefront() {
           {modal === "product" && selectedProduct && (
             <div className="sheet product-sheet" role="dialog" aria-modal="true" aria-label={selectedProduct.name[locale]}>
               <button className="sheet-x" type="button" onClick={() => setModal(null)} aria-label={t.close}>×</button>
-              <Image className="product-modal-image" src={selectedProduct.image} alt={selectedProduct.name[locale]} width={600} height={400} />
+              {selectedProduct.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="product-modal-image" src={selectedProduct.image} alt={selectedProduct.name[locale]} />
+              ) : (
+                <div className="product-modal-image img-placeholder" aria-hidden="true">{categoryIcon(selectedProduct.category)}</div>
+              )}
               <h2>{selectedProduct.name[locale]}</h2>
               <p className="muted product-description">{selectedProduct.description[locale]} · {t.delivery}: {selectedProduct.delivery[locale]} · {t.available}</p>
               <p className="choose-label">{t.choosePackage}</p>
               <div className="package-list">
                 {selectedProduct.packages.map((option, index) => (
                   <button key={index} type="button" className={`pill-button package-option ${selectedPackage === index ? "active" : ""}`} onClick={() => { setSelectedPackage(index); setProductError(""); }}>
-                    {option.label[locale]} — {formatMoney(option.price, locale)}
+                    {option.label[locale]} — {option.oldPrice !== undefined && option.oldPrice > option.price && <s className="price-old">{formatMoney(option.oldPrice, locale)}</s>} {formatMoney(option.price, locale)}
                   </button>
                 ))}
               </div>
@@ -545,7 +594,7 @@ export default function Storefront() {
                 <input className="field" value={playerId} onChange={(event) => { setPlayerId(event.target.value); setProductError(""); }} placeholder={t.playerId} aria-label={t.playerId} inputMode="numeric" />
               )}
               {productError && <div className="form-error" role="alert">{productError}</div>}
-              <div className="product-modal-price">{selectedOption && formatMoney(selectedOption.price, locale)}</div>
+              <div className="product-modal-price">{selectedOption && selectedOption.oldPrice !== undefined && selectedOption.oldPrice > selectedOption.price && <s className="price-old">{formatMoney(selectedOption.oldPrice, locale)}</s>} {selectedOption && formatMoney(selectedOption.price, locale)}</div>
               <div className="modal-actions">
                 <button className="gold-button" type="button" onClick={addToCart}>{t.add}</button>
                 <button className="pill-button" type="button" onClick={() => setModal(null)}>{t.close}</button>
@@ -636,8 +685,14 @@ export default function Storefront() {
                   <input className="field" type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder={locale === "ar" ? "كلمة المرور" : "Password"} aria-label="Admin password" autoComplete="current-password" dir="ltr" />
                   <button className="gold-button" type="submit" disabled={adminBusy}>{adminBusy ? t.loading : locale === "ar" ? "دخول" : "Sign in"}</button>
                 </form>
+              ) : adminTab === "store" ? (
+                <>
+                  {adminTabs}
+                  <AdminCatalog password={adminPassword} locale={locale} notify={setToast} onSaved={(saved) => setCatalog({ categories: saved.categories, products: saved.products.filter((product) => !product.hidden), banner: saved.banner })} />
+                </>
               ) : (
                 <div className="admin-content">
+                  {adminTabs}
                   <p className="muted">{locale === "ar" ? "آخر الطلبات" : "Recent orders"}</p>
                   {adminOrders.length ? adminOrders.map((order) => (
                     <button type="button" key={order.number} className={`admin-order ${adminSelectedNumber === order.number ? "selected" : ""}`} onClick={() => { setAdminSelectedNumber(order.number); setAdminNextStatus(order.status); setAdminNote(""); setAdminError(""); }}>

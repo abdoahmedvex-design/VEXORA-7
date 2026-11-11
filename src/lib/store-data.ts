@@ -1,10 +1,11 @@
 export type Locale = "ar" | "en";
-export type CategoryId = "gaming" | "gift" | "subs";
+export type CategoryId = string;
 export type Localized = { ar: string; en: string };
 
 export type ProductPackage = {
   label: Localized;
   price: number;
+  oldPrice?: number;
 };
 
 export type Product = {
@@ -15,12 +16,24 @@ export type Product = {
   description: Localized;
   delivery: Localized;
   requiresPlayerId: boolean;
+  hidden?: boolean;
   packages: ProductPackage[];
 };
 
+export type Category = { id: CategoryId; icon: string; name: Localized };
+export type DiscountRule = { percent: number; category?: CategoryId; active?: boolean };
+export type Banner = { enabled: boolean; text: Localized };
+export type Catalog = {
+  categories: Category[];
+  products: Product[];
+  discountCodes: Record<string, DiscountRule>;
+  banner: Banner;
+};
+export type PublicCatalog = Omit<Catalog, "discountCodes">;
+
 const pack = (ar: string, price: number, en = ar): ProductPackage => ({ label: { ar, en }, price });
 
-export const categories: { id: CategoryId; icon: string; name: Localized }[] = [
+export const categories: Category[] = [
   { id: "gaming", icon: "🎮", name: { ar: "ألعاب", en: "Gaming" } },
   { id: "gift", icon: "🎁", name: { ar: "بطاقات هدايا", en: "Gift Cards" } },
   { id: "subs", icon: "📺", name: { ar: "اشتراكات", en: "Subscriptions" } },
@@ -28,7 +41,7 @@ export const categories: { id: CategoryId; icon: string; name: Localized }[] = [
 
 export const products: Product[] = [
   {
-    id: 1, category: "gaming", image: "/images/p1.jpg",
+    id: 1, category: "gaming", image: "",
     name: { ar: "شحن PUBG Mobile UC", en: "PUBG Mobile UC" },
     description: { ar: "شحن مباشر بالـ Player ID", en: "Direct top-up via Player ID" },
     delivery: { ar: "5–15 دقيقة", en: "5–15 min" }, requiresPlayerId: true,
@@ -40,7 +53,7 @@ export const products: Product[] = [
     ],
   },
   {
-    id: 11, category: "gaming", image: "/images/p11.jpg",
+    id: 11, category: "gaming", image: "",
     name: { ar: "ببجي نيو ستيت (NC)", en: "PUBG New State (NC)" },
     description: { ar: "شحن مباشر بالـ Player ID", en: "Direct top-up via Player ID" },
     delivery: { ar: "5–15 دقيقة", en: "5–15 min" }, requiresPlayerId: true,
@@ -54,14 +67,14 @@ export const products: Product[] = [
     ],
   },
   {
-    id: 2, category: "gift", image: "/images/p2.jpg",
+    id: 2, category: "gift", image: "",
     name: { ar: "بطاقة Steam (ريال سعودي 🇸🇦)", en: "Steam Wallet (SAR 🇸🇦)" },
     description: { ar: "كود رقمي بالبريد/واتساب", en: "Digital code by email/WhatsApp" },
     delivery: { ar: "خلال دقائق", en: "Within minutes" }, requiresPlayerId: false,
     packages: [pack("20 SAR", 360), pack("50 SAR", 890), pack("100 SAR", 1780), pack("200 SAR", 3550)],
   },
   {
-    id: 7, category: "gift", image: "/images/p7.jpg",
+    id: 7, category: "gift", image: "",
     name: { ar: "بطاقة PlayStation", en: "PlayStation" },
     description: { ar: "كود رقمي", en: "Digital code" },
     delivery: { ar: "خلال دقائق", en: "Within minutes" }, requiresPlayerId: false,
@@ -72,7 +85,7 @@ export const products: Product[] = [
     ],
   },
   {
-    id: 8, category: "gift", image: "/images/p8.jpg",
+    id: 8, category: "gift", image: "",
     name: { ar: "Xbox – بطاقات و Game Pass", en: "Xbox Cards & Game Pass" },
     description: { ar: "كود رقمي", en: "Digital code" },
     delivery: { ar: "خلال دقائق", en: "Within minutes" }, requiresPlayerId: false,
@@ -85,7 +98,7 @@ export const products: Product[] = [
     ],
   },
   {
-    id: 9, category: "subs", image: "/images/p9.jpg",
+    id: 9, category: "subs", image: "",
     name: { ar: "OSN Plus", en: "OSN Plus" },
     description: { ar: "كود رقمي", en: "Digital code" },
     delivery: { ar: "خلال دقائق", en: "Within minutes" }, requiresPlayerId: false,
@@ -96,7 +109,7 @@ export const products: Product[] = [
     ],
   },
   {
-    id: 10, category: "subs", image: "/images/p10.jpg",
+    id: 10, category: "subs", image: "",
     name: { ar: "Netflix", en: "Netflix" },
     description: { ar: "اشتراك شهري", en: "Monthly subscription" },
     delivery: { ar: "خلال دقائق", en: "Within minutes" }, requiresPlayerId: false,
@@ -107,7 +120,7 @@ export const products: Product[] = [
     ],
   },
   {
-    id: 12, category: "subs", image: "/images/p12.jpg",
+    id: 12, category: "subs", image: "",
     name: { ar: "انغامي بلس", en: "Anghami Plus" },
     description: { ar: "اشتراك رقمي", en: "Digital subscription" },
     delivery: { ar: "خلال دقائق", en: "Within minutes" }, requiresPlayerId: false,
@@ -121,8 +134,15 @@ export const products: Product[] = [
   },
 ];
 
-export const discountCodes: Record<string, { percent: number; category?: CategoryId }> = {
+export const discountCodes: Record<string, DiscountRule> = {
   VEX10: { percent: 2, category: "gaming" },
+};
+
+export const defaultCatalog: Catalog = {
+  categories,
+  products,
+  discountCodes,
+  banner: { enabled: false, text: { ar: "", en: "" } },
 };
 
 export function formatMoney(value: number, locale: Locale) {

@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { db } from "@/db";
 import { orderEvents, orders, type StoredOrderItem } from "@/db/schema";
-import { discountCodes, formatMoney, products, type Locale } from "@/lib/store-data";
+import { getCatalog } from "@/lib/catalog";
+import { formatMoney, type Locale } from "@/lib/store-data";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -51,20 +52,21 @@ export async function POST(request: Request) {
     return badRequest("Your cart is empty or too large.");
   }
 
+  const catalog = await getCatalog();
   const requestedItems = body.items as RequestedItem[];
   const items: StoredOrderItem[] = [];
   let subtotal = 0;
   let eligibleSubtotal = 0;
   let totalQuantity = 0;
-  const code = discountCode ? discountCodes[discountCode] : undefined;
-  if (discountCode && !code) return badRequest("Invalid discount code.");
+  const code = discountCode ? catalog.discountCodes[discountCode] : undefined;
+  if (discountCode && (!code || code.active === false)) return badRequest("Invalid discount code.");
 
   for (const requested of requestedItems) {
     if (!requested || typeof requested !== "object") return badRequest("Invalid product.");
-    const product = products.find((candidate) => candidate.id === requested.productId);
+    const product = catalog.products.find((candidate) => candidate.id === requested.productId);
     const packageIndex = requested.packageIndex;
     const quantity = requested.quantity;
-    if (!product || !Number.isInteger(packageIndex) || !product.packages[packageIndex] ||
+    if (!product || product.hidden || !Number.isInteger(packageIndex) || !product.packages[packageIndex] ||
         !Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
       return badRequest("Invalid product or quantity.");
     }
