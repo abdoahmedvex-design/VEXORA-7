@@ -117,6 +117,28 @@ function ProductCard({ product, locale, icon, onOpen }: {
   );
 }
 
+function PackageCard({ product, index, locale, icon, showName, onOpen }: {
+  product: Product;
+  index: number;
+  locale: Locale;
+  icon: string;
+  showName: boolean;
+  onOpen: (product: Product, packageIndex: number) => void;
+}) {
+  const option = product.packages[index];
+  const oldPrice = option.oldPrice !== undefined && option.oldPrice > option.price ? option.oldPrice : null;
+  return (
+    <button className="product-card" type="button" onClick={() => onOpen(product, index)} aria-label={`${product.name[locale]} ${option.label[locale]}`}>
+      <span className="product-image">
+        <ProductPicture src={product.image} alt={product.name[locale]} icon={icon} />
+      </span>
+      <span className="product-title">{option.label[locale]}</span>
+      {showName && <span className="product-price">{product.name[locale]}</span>}
+      <span className="product-price">{oldPrice !== null && <s className="price-old">{formatMoney(oldPrice, locale)}</s>}{formatMoney(option.price, locale)}</span>
+    </button>
+  );
+}
+
 function Timeline({ order, locale }: { order: TrackedOrder; locale: Locale }) {
   const steps = order.status === "cancelled"
     ? statusSteps.filter((step) => order.events.some((event) => event.status === step)).concat("cancelled")
@@ -279,9 +301,9 @@ export default function Storefront() {
   const selectedOption = selectedProduct?.packages[selectedPackage] || selectedProduct?.packages[0];
   const selectedAdminOrder = adminOrders?.find((order) => order.number === adminSelectedNumber);
 
-  function openProduct(product: Product) {
+  function openProduct(product: Product, packageIndex = 0) {
     setSelectedProduct(product);
-    setSelectedPackage(0);
+    setSelectedPackage(packageIndex);
     setPlayerId("");
     setProductError("");
     setModal("product");
@@ -534,8 +556,14 @@ export default function Storefront() {
             </div>
           ) : (
             <div className="product-grid filtered-products">
-              {products.filter((product) => product.category === activeTab).map((product) =>
-                <ProductCard key={product.id} product={product} locale={locale} icon={categoryIcon(product.category)} onOpen={openProduct} />)}
+              {(() => {
+                const tabProducts = products.filter((product) => product.category === activeTab);
+                return tabProducts.flatMap((product) =>
+                  product.packages.map((_, index) => (
+                    <PackageCard key={`${product.id}-${index}`} product={product} index={index} locale={locale}
+                      icon={categoryIcon(product.category)} showName={tabProducts.length > 1} onOpen={openProduct} />
+                  )));
+              })()}
             </div>
           )}
         </section>
