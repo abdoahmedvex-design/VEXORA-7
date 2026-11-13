@@ -465,3 +465,18 @@ select.field option { background: #141414; color: var(--ivory); }
 .admin-savebar { position: sticky; bottom: calc(-1px - env(safe-area-inset-bottom, 0px)); margin-top: 14px; padding: 10px 0; background: linear-gradient(180deg, transparent, rgba(14, 14, 14, .96) 35%); }
 .admin-savebar .gold-button { width: 100%; }
 .admin-update input[type="file"] { padding: 8px; }
+/* perf */
+body { background: var(--bg); }
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(520px 420px at 12% 8%, rgba(214,180,91,.19), transparent 70%), radial-gradient(480px 420px at 92% 38%, rgba(214,180,91,.09), transparent 70%), radial-gradient(620px 500px at 30% 96%, rgba(150,120,60,.15), transparent 70%); }
+.product-card, .feature-card, .category-heading, .pill-button, .field, .track-form input, .sheet, .modal-backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.site-header { -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.product-card, .feature-card { background: linear-gradient(145deg, #2a2a2a, #181818); }
+.product-card:hover { background: linear-gradient(145deg, #333, #1d1d1d); }
+.category-heading { background: #202020; }
+.pill-button { background: #303030; }
+.field, .track-form input { background: #1e1e1e; }
+.sheet { background: linear-gradient(160deg, #282828, #0e0e0e); will-change: transform, opacity; }
+.modal-backdrop { background: rgba(0,0,0,.62); }
+.hero h1 { filter: none; }
+@media (hover: none) { .product-card:hover, .gold-button:hover { transform: none; } }
+/* end perf */
