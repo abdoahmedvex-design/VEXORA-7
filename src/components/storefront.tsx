@@ -164,6 +164,8 @@ export default function Storefront() {
   const [paymentMethod, setPaymentMethod] = useState("Vodafone Cash");
   const [checkoutError, setCheckoutError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [account, setAccount] = useState<{ name: string; points: number; rules: { egpPerPoint: number; redeemBlock: number; egpPerBlock: number; maxShare: number } } | null>(null);
+  const [usePoints, setUsePoints] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [trackNumber, setTrackNumber] = useState("");
   const [trackPhone, setTrackPhone] = useState("");
@@ -240,6 +242,20 @@ export default function Storefront() {
     return () => clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    if (modal !== "cart") return;
+    let cancelled = false;
+    fetch("/api/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.loggedIn) setAccount({ name: data.name, points: data.points, rules: data.rules });
+        else { setAccount(null); setUsePoints(false); }
+      })
+      .catch(() => { /* Points are optional; checkout works without them. */ });
+    return () => { cancelled = true; };
+  }, [modal]);
+
   const cartDetails = useMemo(() => cart.flatMap((item) => {
     const product = products.find((entry) => entry.id === item.productId);
     const chosen = product?.packages[item.packageIndex];
@@ -250,7 +266,16 @@ export default function Storefront() {
   const eligibleSubtotal = cartDetails.reduce((sum, line) =>
     sum + (!coupon?.category || coupon.category === line.product.category ? line.chosen.price * line.item.quantity : 0), 0);
   const discount = coupon ? Math.round(eligibleSubtotal * coupon.percent / 100) : 0;
-  const total = subtotal - discount;
+  const afterCode = subtotal - discount;
+  const maxPts = account
+    ? Math.max(0, Math.min(
+        Math.floor(account.points / account.rules.redeemBlock),
+        Math.floor((afterCode * account.rules.maxShare) / account.rules.egpPerBlock),
+      )) * account.rules.redeemBlock
+    : 0;
+  const pointsEgp = account ? (maxPts / account.rules.redeemBlock) * account.rules.egpPerBlock : 0;
+  const pointsDiscount = usePoints ? pointsEgp : 0;
+  const total = afterCode - pointsDiscount;
   const selectedOption = selectedProduct?.packages[selectedPackage] || selectedProduct?.packages[0];
   const selectedAdminOrder = adminOrders?.find((order) => order.number === adminSelectedNumber);
 
@@ -325,7 +350,7 @@ export default function Storefront() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerName: checkoutName, phone: checkoutPhone, email: checkoutEmail,
-          paymentMethod, discountCode: appliedCode, locale,
+          paymentMethod, discountCode: appliedCode, locale, usePoints: usePoints && maxPts > 0,
           items: cartDetails.map(({ item }) => ({
             productId: item.productId, packageIndex: item.packageIndex,
             quantity: item.quantity, playerId: item.playerId,
@@ -334,7 +359,7 @@ export default function Storefront() {
       });
       const result = await response.json() as Confirmation & { error?: string };
       if (!response.ok) {
-        setCheckoutError(response.status === 400 ? (result.error || t.required) : t.error);
+        setCheckoutError(response.status === 400 || response.status === 409 ? (result.error || t.required) : t.error);
         return;
       }
       setConfirmation(result);
@@ -344,6 +369,7 @@ export default function Storefront() {
       setCart([]);
       setCoupon(null);
       setCouponInput("");
+      setUsePoints(false);
       setModal("confirmation");
     } catch {
       setCheckoutError(t.connectionError);
@@ -460,6 +486,7 @@ export default function Storefront() {
         <button className="pill-button header-button" type="button" onClick={() => setLocale(locale === "ar" ? "en" : "ar")} aria-label={locale === "ar" ? "Switch to English" : "التحويل إلى العربية"}>
           {locale === "ar" ? "EN" : "عربي"}
         </button>
+        <a className="pill-button header-button" href="/account">{locale === "ar" ? "حسابي" : "Account"}</a>
         <button className="pill-button header-button cart-trigger" type="button" onClick={() => { setCheckoutError(""); setModal("cart"); }} aria-label={t.cart}>
           <span aria-hidden="true">🛒</span> <span>{cartCount}</span>
         </button>
@@ -630,6 +657,23 @@ export default function Storefront() {
                     <button className="pill-button" type="button" onClick={applyCoupon}>{t.apply}</button>
                   </div>
                   {couponError && <div className="form-error" role="alert">{couponError}</div>}
+                  {account ? (
+                    <label className="note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input type="checkbox" checked={usePoints && maxPts > 0} disabled={maxPts <= 0} onChange={(event) => setUsePoints(event.target.checked)} />
+                      <span>
+                        {maxPts > 0
+                          ? (locale === "ar"
+                              ? `استخدم ${maxPts} نقطة = خصم ${formatMoney(pointsEgp, locale)} (رصيدك ${account.points})`
+                              : `Use ${maxPts} points = ${formatMoney(pointsEgp, locale)} off (balance ${account.points})`)
+                          : (locale === "ar"
+                              ? `رصيدك ${account.points} نقطة. كل ${account.rules.redeemBlock} نقطة = خصم ${account.rules.egpPerBlock} جنيه`
+                              : `Balance ${account.points} points. Every ${account.rules.redeemBlock} points = ${account.rules.egpPerBlock} EGP off`)}
+                      </span>
+                    </label>
+                  ) : (
+                    <a className="note" href="/login">{locale === "ar" ? "سجّل دخول واكسب نقاط على كل طلب" : "Sign in to earn points on every order"}</a>
+                  )}
+                  {pointsDiscount > 0 && <div className="cart-summary-row"><span>{locale === "ar" ? "خصم النقاط" : "Points discount"}</span><span>−{formatMoney(pointsDiscount, locale)}</span></div>}
                   <div className="cart-summary-row total-row"><strong>{t.total}</strong><strong>{formatMoney(total, locale)}</strong></div>
                   <form className="checkout-form" onSubmit={submitOrder}>
                     <input className="field" value={checkoutName} onChange={(event) => setCheckoutName(event.target.value)} placeholder={t.fullName} aria-label={t.fullName} autoComplete="name" />
