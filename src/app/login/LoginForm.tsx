@@ -72,3 +72,14 @@ export default function LoginForm() {
           {mode === "login" ? "دخول" : "إنشاء حساب"}
         </button>
       </form>
+
+      <button
+        type="button"
+        onClick={() => { setMode(mode === "login" ? "register" : "login"); setErr(""); }}
+        className="mt-5 text-sm text-[#F5F1E7]/70 underline"
+      >
+        {mode === "login" ? "معندكش حساب؟ سجّل دلوقتي" : "عندك حساب؟ سجّل دخول"}
+      </button>
+    </div>
+  );
+}
