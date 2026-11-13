@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
 import { orderEvents, orders } from "@/db/schema";
+import { awardPointsForOrder, refundPointsForOrder, type Executor } from "@/lib/points";
 import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -86,6 +87,10 @@ export async function PATCH(request: Request) {
     await db.transaction(async (tx) => {
       await tx.update(orders).set({ status, updatedAt: new Date() }).where(eq(orders.id, current.id));
       await tx.insert(orderEvents).values({ orderId: current.id, status, note: note || null });
+      if (status !== current.status) {
+        if (status === "delivered") await awardPointsForOrder(current.id, tx as unknown as Executor);
+        if (status === "cancelled") await refundPointsForOrder(current.id, tx as unknown as Executor);
+      }
     });
     return NextResponse.json({ success: true });
   } catch (error) {
