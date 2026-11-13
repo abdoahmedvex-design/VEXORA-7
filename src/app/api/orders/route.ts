@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
+import { auth } from "@/auth";
 import { db } from "@/db";
-import { orderEvents, orders, type StoredOrderItem } from "@/db/schema";
+import { orderEvents, orders, pointsLedger, users, type StoredOrderItem } from "@/db/schema";
+import { maxRedeemablePoints, pointsToEgp } from "@/lib/points";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { getCatalog } from "@/lib/catalog";
 import { formatMoney, type Locale } from "@/lib/store-data";
 import { NextResponse } from "next/server";
@@ -39,6 +42,7 @@ export async function POST(request: Request) {
   const email = typeof body.email === "string" ? body.email.trim().slice(0, 255) : "";
   const paymentMethod = body.paymentMethod;
   const locale: Locale = body.locale === "en" ? "en" : "ar";
+  const usePoints = body.usePoints === true;
   const discountCode = typeof body.discountCode === "string" ? body.discountCode.trim().toUpperCase().slice(0, 40) : "";
 
   if (customerName.length < 2 || !/^\+?\d{10,14}$/.test(phone)) {
@@ -92,7 +96,24 @@ export async function POST(request: Request) {
   if (totalQuantity > 50) return badRequest("Too many items in your cart.");
   if (code && eligibleSubtotal === 0) return badRequest("Discount does not apply to these items.");
   const discount = code ? Math.round(eligibleSubtotal * code.percent / 100) : 0;
-  const total = subtotal - discount;
+  const afterCode = subtotal - discount;
+
+  // حساب العميل ونقاطه (اختياري)
+  const session = await auth();
+  const sessionUserId = Number((session?.user as { id?: string } | undefined)?.id) || 0;
+  let userId: number | null = null;
+  let balance = 0;
+  if (sessionUserId) {
+    const [account] = await db.select({ id: users.id, points: users.points }).from(users).where(eq(users.id, sessionUserId)).limit(1);
+    if (account) {
+      userId = account.id;
+      balance = account.points;
+    }
+  }
+  if (usePoints && !userId) return badRequest("Please sign in to use your points.");
+  const pointsUsed = usePoints ? maxRedeemablePoints(balance, afterCode) : 0;
+  const pointsDiscount = pointsToEgp(pointsUsed);
+  const total = afterCode - pointsDiscount;
   const number = `VX-${randomBytes(3).toString("hex").toUpperCase()}`;
 
   try {
@@ -106,13 +127,27 @@ export async function POST(request: Request) {
         subtotal,
         discount,
         discountCode: discountCode || null,
+        userId,
+        pointsUsed,
         total,
         status: "received",
         items,
       }).returning({ id: orders.id });
       await tx.insert(orderEvents).values({ orderId: created.id, status: "received" });
+      if (pointsUsed > 0 && userId) {
+        const spent = await tx
+          .update(users)
+          .set({ points: sql`${users.points} - ${pointsUsed}` })
+          .where(and(eq(users.id, userId), gte(users.points, pointsUsed)))
+          .returning({ id: users.id });
+        if (spent.length === 0) throw new Error("INSUFFICIENT_POINTS");
+        await tx.insert(pointsLedger).values({ userId, orderId: created.id, delta: -pointsUsed, reason: "spend" });
+      }
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "INSUFFICIENT_POINTS") {
+      return NextResponse.json({ error: "Not enough points." }, { status: 409 });
+    }
     console.error("Could not create order", error);
     return NextResponse.json({ error: "Could not place order. Please try again." }, { status: 500 });
   }
@@ -121,6 +156,7 @@ export async function POST(request: Request) {
   const message = (ar ? "مرحباً VEXORA، أريد تأكيد طلبي رقم " : "Hello VEXORA, I'd like to confirm my order ") + number + ":\n" +
     items.map((item) => `• ${ar ? item.productNameAr : item.productNameEn} – ${ar ? item.packageAr : item.packageEn}${item.playerId ? ` (ID: ${item.playerId})` : ""} × ${item.quantity}`).join("\n") +
     (discount ? `\n${ar ? "الخصم" : "Discount"}: −${formatMoney(discount, locale)} (${discountCode})` : "") +
+    (pointsUsed ? `\n${ar ? "خصم النقاط" : "Points discount"}: −${formatMoney(pointsDiscount, locale)} (${pointsUsed} ${ar ? "نقطة" : "pts"})` : "") +
     `\n${ar ? "الإجمالي" : "Total"}: ${formatMoney(total, locale)}` +
     `\n${ar ? "الاسم الكامل" : "Full name"}: ${customerName}` +
     `\n${ar ? "رقم الهاتف" : "Phone number"}: ${phone}` +
@@ -131,6 +167,7 @@ export async function POST(request: Request) {
     number,
     phone,
     total,
+    pointsUsed,
     message,
     whatsappUrl: `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
   }, { status: 201 });
