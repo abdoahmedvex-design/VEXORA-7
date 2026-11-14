@@ -8,8 +8,9 @@ export type Executor = Pick<typeof db, "select" | "insert" | "update">;
 export const POINTS = {
   egpPerPoint: 10, // كل 10 جنيه مدفوعة = نقطة
   redeemBlock: 100, // الاستبدال كل 100 نقطة
-  egpPerBlock: 20, // كل 100 نقطة = 20 جنيه خصم
+  egpPerBlock: 10, // كل 100 نقطة = 10 جنيه خصم
   maxShare: 0.5, // أقصى خصم بالنقاط = نص قيمة الطلب
+  maxDiscountEgp: 10, // أقصى خصم بالنقاط للطلب الواحد (جنيه)
 };
 
 export const pointsToEgp = (p: number) => Math.floor(p / POINTS.redeemBlock) * POINTS.egpPerBlock;
@@ -19,7 +20,8 @@ export const earnedFor = (paidTotal: number) => Math.floor(paidTotal / POINTS.eg
 export function maxRedeemablePoints(balance: number, orderTotal: number) {
   const byBalance = Math.floor(balance / POINTS.redeemBlock);
   const byOrder = Math.floor((orderTotal * POINTS.maxShare) / POINTS.egpPerBlock);
-  return Math.max(0, Math.min(byBalance, byOrder)) * POINTS.redeemBlock;
+  const byCap = Math.floor(POINTS.maxDiscountEgp / POINTS.egpPerBlock);
+  return Math.max(0, Math.min(byBalance, byOrder, byCap)) * POINTS.redeemBlock;
 }
 
 // يضيف نقاط الطلب مرة واحدة بس (حتى لو اتنادت أكتر من مرة)
