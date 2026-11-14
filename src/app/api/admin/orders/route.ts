@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
-import { orderEvents, orders } from "@/db/schema";
+import { orderEvents, orders, pointsLedger, users } from "@/db/schema";
 import { awardPointsForOrder, refundPointsForOrder, type Executor } from "@/lib/points";
 import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -96,5 +96,36 @@ export async function PATCH(request: Request) {
   } catch (error) {
     console.error("Could not update order", error);
     return NextResponse.json({ error: "Could not update order." }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const denied = checkAccess(request);
+  if (denied) return denied;
+  let body: { scope?: unknown; number?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
+  try {
+    if (body?.scope === "order") {
+      const number = typeof body.number === "string" ? body.number.trim().toUpperCase() : "";
+      if (!/^VX-[A-Z0-9]{6}$/.test(number)) return NextResponse.json({ error: "Invalid order." }, { status: 400 });
+      await db.delete(orders).where(eq(orders.number, number));
+    } else if (body?.scope === "orders") {
+      await db.delete(orders);
+    } else if (body?.scope === "points") {
+      await db.transaction(async (tx) => {
+        await tx.delete(pointsLedger);
+        await tx.update(users).set({ points: 0 });
+      });
+    } else {
+      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Could not delete admin data", error);
+    return NextResponse.json({ error: "Could not delete." }, { status: 500 });
   }
 }
