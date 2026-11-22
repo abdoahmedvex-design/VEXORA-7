@@ -233,6 +233,32 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                   <label className="muted">{tr("صورة المنتج (من الموبايل)", "Product picture")}</label>
                   <input className="field" type="file" accept="image/*" disabled={busy} onChange={(event) => { void pickImage(product.id, event.target.files?.[0]); event.target.value = ""; }} />
                   
+                      
+                  {product.image && <button type="button" className="pill-button" onClick={() => updateProduct(product.id, { image: "" })}>{tr("حذف الصورة", "Remove picture")}</button>}
+
+                  <label className="muted">{tr("الاسم بالعربي", "Name (Arabic)")}</label>
+                  <input className="field" value={product.name.ar} onChange={(event) => updateProduct(product.id, { name: { ...product.name, ar: event.target.value } })} />
+                  <label className="muted">{tr("الاسم بالإنجليزي", "Name (English)")}</label>
+                  <input className="field" dir="ltr" value={product.name.en} onChange={(event) => updateProduct(product.id, { name: { ...product.name, en: event.target.value } })} />
+                  <label className="muted">{tr("الوصف بالعربي", "Description (Arabic)")}</label>
+                  <input className="field" value={product.description.ar} onChange={(event) => updateProduct(product.id, { description: { ...product.description, ar: event.target.value } })} />
+                  <label className="muted">{tr("الوصف بالإنجليزي", "Description (English)")}</label>
+                  <input className="field" dir="ltr" value={product.description.en} onChange={(event) => updateProduct(product.id, { description: { ...product.description, en: event.target.value } })} />
+                  <label className="muted">{tr("مدة التسليم (عربي / إنجليزي)", "Delivery time (Arabic / English)")}</label>
+                  <input className="field" value={product.delivery.ar} onChange={(event) => updateProduct(product.id, { delivery: { ...product.delivery, ar: event.target.value } })} />
+                  <input className="field" dir="ltr" value={product.delivery.en} onChange={(event) => updateProduct(product.id, { delivery: { ...product.delivery, en: event.target.value } })} />
+
+                  <label className="muted">{tr("القسم", "Section")}</label>
+                  <select className="field" value={product.category} onChange={(event) => updateProduct(product.id, { category: event.target.value })}>
+                    {draft.categories.map((category) => <option key={category.id} value={category.id}>{category.icon} {category.name[locale]}</option>)}
+                  </select>
+                  <label className="admin-check"><input type="checkbox" checked={product.requiresPlayerId} onChange={(event) => updateProduct(product.id, { requiresPlayerId: event.target.checked })} /> {tr("يطلب Player ID من العميل", "Ask the customer for a Player ID")}</label>
+                  <label className="admin-check"><input type="checkbox" checked={product.hidden === true} onChange={(event) => updateProduct(product.id, { hidden: event.target.checked })} /> {tr("إخفاء المنتج من المتجر", "Hide from the store")}</label>
+
+                  <h3>{tr("الباقات والأسعار", "Packages and prices")}</h3>
+                  {product.packages.map((pkg, index) => (
+                    <div className="admin-package" key={index}> 
+                      
                       <div className="admin-thumb">
                         {pkg.image
                           // eslint-disable-next-line @next/next/no-img-element
@@ -261,30 +287,6 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                         </button>
                       )}
 
-                  {product.image && <button type="button" className="pill-button" onClick={() => updateProduct(product.id, { image: "" })}>{tr("حذف الصورة", "Remove picture")}</button>}
-
-                  <label className="muted">{tr("الاسم بالعربي", "Name (Arabic)")}</label>
-                  <input className="field" value={product.name.ar} onChange={(event) => updateProduct(product.id, { name: { ...product.name, ar: event.target.value } })} />
-                  <label className="muted">{tr("الاسم بالإنجليزي", "Name (English)")}</label>
-                  <input className="field" dir="ltr" value={product.name.en} onChange={(event) => updateProduct(product.id, { name: { ...product.name, en: event.target.value } })} />
-                  <label className="muted">{tr("الوصف بالعربي", "Description (Arabic)")}</label>
-                  <input className="field" value={product.description.ar} onChange={(event) => updateProduct(product.id, { description: { ...product.description, ar: event.target.value } })} />
-                  <label className="muted">{tr("الوصف بالإنجليزي", "Description (English)")}</label>
-                  <input className="field" dir="ltr" value={product.description.en} onChange={(event) => updateProduct(product.id, { description: { ...product.description, en: event.target.value } })} />
-                  <label className="muted">{tr("مدة التسليم (عربي / إنجليزي)", "Delivery time (Arabic / English)")}</label>
-                  <input className="field" value={product.delivery.ar} onChange={(event) => updateProduct(product.id, { delivery: { ...product.delivery, ar: event.target.value } })} />
-                  <input className="field" dir="ltr" value={product.delivery.en} onChange={(event) => updateProduct(product.id, { delivery: { ...product.delivery, en: event.target.value } })} />
-
-                  <label className="muted">{tr("القسم", "Section")}</label>
-                  <select className="field" value={product.category} onChange={(event) => updateProduct(product.id, { category: event.target.value })}>
-                    {draft.categories.map((category) => <option key={category.id} value={category.id}>{category.icon} {category.name[locale]}</option>)}
-                  </select>
-                  <label className="admin-check"><input type="checkbox" checked={product.requiresPlayerId} onChange={(event) => updateProduct(product.id, { requiresPlayerId: event.target.checked })} /> {tr("يطلب Player ID من العميل", "Ask the customer for a Player ID")}</label>
-                  <label className="admin-check"><input type="checkbox" checked={product.hidden === true} onChange={(event) => updateProduct(product.id, { hidden: event.target.checked })} /> {tr("إخفاء المنتج من المتجر", "Hide from the store")}</label>
-
-                  <h3>{tr("الباقات والأسعار", "Packages and prices")}</h3>
-                  {product.packages.map((pkg, index) => (
-                    <div className="admin-package" key={index}>
                       <input className="field" placeholder={tr("اسم الباقة بالعربي", "Package name (Arabic)")} value={pkg.label.ar} onChange={(event) => updatePackage(product.id, index, { label: { ...pkg.label, ar: event.target.value } })} />
                       <input className="field" dir="ltr" placeholder={tr("اسم الباقة بالإنجليزي", "Package name (English)")} value={pkg.label.en} onChange={(event) => updatePackage(product.id, index, { label: { ...pkg.label, en: event.target.value } })} />
                       <div className="admin-grid2">
