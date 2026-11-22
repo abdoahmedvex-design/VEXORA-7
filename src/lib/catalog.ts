@@ -78,8 +78,17 @@ export function sanitizeCatalog(input: unknown): Result {
         return { ok: false, error: `Product ${name.en}: every package needs Arabic and English names and a price above 0.` };
       }
       const oldPrice = pkg.oldPrice === undefined || pkg.oldPrice === null ? undefined : int(pkg.oldPrice, 1, 10000000);
-      if (oldPrice === null) return { ok: false, error: `Product ${name.en}: invalid price before discount.` };
-      packages.push(oldPrice && oldPrice > price ? { label, price, oldPrice } : { label, price });
+const packageImage = pkg.image === undefined ? "" : validImage(pkg.image);
+
+if (oldPrice === null) return { ok: false, error: `Product ${name.en}: invalid price before discount.` };
+if (packageImage === null) return { ok: false, error: `Product ${name.en}: invalid package image.` };
+
+packages.push({
+  label,
+  price,
+  ...(oldPrice && oldPrice > price ? { oldPrice } : {}),
+  ...(packageImage ? { image: packageImage } : {}),
+});
     }
     products.push({
       id, category, image, name, description, delivery,
