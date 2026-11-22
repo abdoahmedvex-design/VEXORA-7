@@ -675,8 +675,7 @@ export default function Storefront() {
                       </span>
                     )}
                     <span className="product-image">
-                      <ProductPicture src={selectedProduct.image} alt={selectedProduct.name[locale]} icon={categoryIcon(selectedProduct.category)} />
-                    </span>
+                      <ProductPicture src={option.image || selectedProduct.image} alt={option.label[locale]} icon={categoryIcon(selectedProduct.category)} />
                     <span className="product-title">{option.label[locale]}</span>
                     <span className="product-price">{option.oldPrice !== undefined && option.oldPrice > option.price && <s className="price-old">{formatMoney(option.oldPrice, locale)}</s>}{formatMoney(option.price, locale)}</span>
                   </button>
