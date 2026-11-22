@@ -51,21 +51,24 @@ async function readError(response: Response, fallback: string) {
   }
 }
 
-export default function AdminCatalog({ password, locale, notify, onSaved }: {
+export default function AdminCatalog({ password, locale, notify, onSaved, initialTab }: {
   password: string;
   locale: Locale;
   notify: (message: string) => void;
   onSaved: (catalog: Catalog) => void;
+  initialTab?: Tab;
 }) {
   const ar = locale === "ar";
   const tr = (arabic: string, english: string) => (ar ? arabic : english);
   const [draft, setDraft] = useState<Catalog | null>(null);
-  const [tab, setTab] = useState<Tab>("products");
+  const [tab, setTab] = useState<Tab>(initialTab || "products");
   const [openId, setOpenId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
   const [newCode, setNewCode] = useState("");
+
+  useEffect(() => setTab(initialTab || "products"), [initialTab]);
 
   const headers = { Authorization: `Bearer ${password}`, "Content-Type": "application/json" };
 
@@ -125,8 +128,7 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
     setOpenId(id);
   }
 
-  async function pickImage(productId: number, file: File | undefined) {
-    if (!file) return;
+  async function uploadImage(file: File): Promise<string | null> {
     setBusy(true);
     setError("");
     try {
@@ -134,16 +136,29 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
       const response = await fetch("/api/admin/image", { method: "POST", headers, body: JSON.stringify({ dataUrl }) });
       if (!response.ok) {
         setError(await readError(response, tr("تعذر رفع الصورة", "Could not upload the image")));
-        return;
+        return null;
       }
       const result = await response.json() as { url: string };
-      updateProduct(productId, { image: result.url });
       notify(tr("تم رفع الصورة، اضغط حفظ", "Image uploaded, press Save"));
+      return result.url;
     } catch {
       setError(tr("تعذر قراءة الصورة", "Could not read the image"));
+      return null;
     } finally {
       setBusy(false);
     }
+  }
+
+  async function pickProductImage(productId: number, file: File | undefined) {
+    if (!file) return;
+    const url = await uploadImage(file);
+    if (url) updateProduct(productId, { image: url });
+  }
+
+  async function pickPackageImage(productId: number, index: number, file: File | undefined) {
+    if (!file) return;
+    const url = await uploadImage(file);
+    if (url) updatePackage(productId, index, { image: url });
   }
 
   async function save() {
@@ -205,9 +220,9 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                       ? <img src={product.image} alt="" />
                       : <span>{categoryIcon(product.category)}</span>}
                   </div>
-                  <label className="muted">{tr("صورة المنتج (من الموبايل)", "Product picture")}</label>
-                  <input className="field" type="file" accept="image/*" disabled={busy} onChange={(event) => { void pickImage(product.id, event.target.files?.[0]); event.target.value = ""; }} />
-                  {product.image && <button type="button" className="pill-button" onClick={() => updateProduct(product.id, { image: "" })}>{tr("حذف الصورة", "Remove picture")}</button>}
+                  <label className="muted">{tr("صورة المنتج الأساسية", "Primary product image")}</label>
+                  <input className="field" type="file" accept="image/*" disabled={busy} onChange={(event) => { void pickProductImage(product.id, event.target.files?.[0]); event.target.value = ""; }} />
+                  {product.image && <button type="button" className="pill-button" onClick={() => updateProduct(product.id, { image: "" })}>{tr("حذف صورة المنتج", "Remove product image")}</button>}
 
                   <label className="muted">{tr("الاسم بالعربي", "Name (Arabic)")}</label>
                   <input className="field" value={product.name.ar} onChange={(event) => updateProduct(product.id, { name: { ...product.name, ar: event.target.value } })} />
@@ -225,12 +240,21 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                   <select className="field" value={product.category} onChange={(event) => updateProduct(product.id, { category: event.target.value })}>
                     {draft.categories.map((category) => <option key={category.id} value={category.id}>{category.icon} {category.name[locale]}</option>)}
                   </select>
-                  <label className="admin-check"><input type="checkbox" checked={product.requiresPlayerId} onChange={(event) => updateProduct(product.id, { requiresPlayerId: event.target.checked })} /> {tr("يطلب Player ID من العميل", "Ask the customer for a Player ID")}</label>
-                  <label className="admin-check"><input type="checkbox" checked={product.hidden === true} onChange={(event) => updateProduct(product.id, { hidden: event.target.checked })} /> {tr("إخفاء المنتج من المتجر", "Hide from the store")}</label>
+                  <label className="admin-check"><input type="checkbox" checked={product.requiresPlayerId} onChange={(event) => updateProduct(product.id, { requiresPlayerId: event.target.checked })} /> {tr("يتطلب Player ID", "Requires Player ID")}</label>
+                  <label className="admin-check"><input type="checkbox" checked={product.hidden === true} onChange={(event) => updateProduct(product.id, { hidden: event.target.checked })} /> {tr("إخفاء المنتج", "Hide product")}</label>
 
                   <h3>{tr("الباقات والأسعار", "Packages and prices")}</h3>
                   {product.packages.map((pkg, index) => (
                     <div className="admin-package" key={index}>
+                      <div className="admin-package-preview">
+                        {pkg.image
+                          // eslint-disable-next-line @next/next/no-img-element
+                          ? <img src={pkg.image} alt="" />
+                          : <span>{tr("معاينة الباقة", "Package preview")}</span>}
+                      </div>
+                      <label className="muted">{tr("صورة هذه الباقة فقط", "Image for this package only")}</label>
+                      <input className="field" type="file" accept="image/*" disabled={busy} onChange={(event) => { void pickPackageImage(product.id, index, event.target.files?.[0]); event.target.value = ""; }} />
+                      {pkg.image && <button type="button" className="pill-button" onClick={() => updatePackage(product.id, index, { image: "" })}>{tr("حذف صورة الباقة", "Remove package image")}</button>}
                       <input className="field" placeholder={tr("اسم الباقة بالعربي", "Package name (Arabic)")} value={pkg.label.ar} onChange={(event) => updatePackage(product.id, index, { label: { ...pkg.label, ar: event.target.value } })} />
                       <input className="field" dir="ltr" placeholder={tr("اسم الباقة بالإنجليزي", "Package name (English)")} value={pkg.label.en} onChange={(event) => updatePackage(product.id, index, { label: { ...pkg.label, en: event.target.value } })} />
                       <div className="admin-grid2">
@@ -238,12 +262,12 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                         <input className="field" inputMode="numeric" placeholder={tr("السعر قبل الخصم", "Price before discount")} value={pkg.oldPrice || ""} onChange={(event) => updatePackage(product.id, index, { oldPrice: toNumber(event.target.value) || undefined })} />
                       </div>
                       {product.packages.length > 1 && (
-                        <button type="button" className="pill-button" onClick={() => edit((catalog) => ({ ...catalog, products: catalog.products.map((entry) => entry.id === product.id ? { ...entry, packages: entry.packages.filter((_, position) => position !== index) } : entry) }))}>{tr("حذف الباقة", "Delete package")}</button>
+                        <button type="button" className="pill-button" onClick={() => edit((catalog) => ({ ...catalog, products: catalog.products.map((entry) => entry.id === product.id ? { ...entry, packages: entry.packages.filter((_, position) => position !== index) } : entry) }))}>{tr("حذف الباقة", "Remove package")}</button>
                       )}
                     </div>
                   ))}
                   <button type="button" className="pill-button" onClick={() => updateProduct(product.id, { packages: [...product.packages, { label: { ar: "", en: "" }, price: 0 }] })}>+ {tr("إضافة باقة", "Add package")}</button>
-                  <button type="button" className="pill-button danger-button" onClick={() => { if (window.confirm(tr("حذف المنتج نهائيًا؟", "Delete this product?"))) { edit((catalog) => ({ ...catalog, products: catalog.products.filter((entry) => entry.id !== product.id) })); setOpenId(null); } }}>{tr("حذف المنتج", "Delete product")}</button>
+                  <button type="button" className="pill-button danger-button" onClick={() => { if (window.confirm(tr("حذف المنتج نهائيًا؟", "Delete this product?"))) edit((catalog) => ({ ...catalog, products: catalog.products.filter((entry) => entry.id !== product.id) })); }}>{tr("حذف المنتج", "Delete product")}</button>
                 </div>
               )}
             </div>
@@ -254,7 +278,7 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
 
       {tab === "categories" && (
         <div>
-          <p className="muted">{tr("الأقسام هي الخانات اللي بتظهر في المتجر (ألعاب، بطاقات...).", "Sections group your products in the store.")}</p>
+          <p className="muted">{tr("الأقسام هي الخانات التي تظهر في المتجر.", "Sections group your products in the store.")}</p>
           {draft.categories.map((category, index) => {
             const used = draft.products.some((product) => product.category === category.id);
             return (
@@ -264,11 +288,11 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                   <input className="field" value={category.name.ar} placeholder={tr("الاسم بالعربي", "Name (Arabic)")} onChange={(event) => edit((catalog) => ({ ...catalog, categories: catalog.categories.map((entry, position) => position === index ? { ...entry, name: { ...entry.name, ar: event.target.value } } : entry) }))} />
                 </div>
                 <input className="field" dir="ltr" value={category.name.en} placeholder={tr("الاسم بالإنجليزي", "Name (English)")} onChange={(event) => edit((catalog) => ({ ...catalog, categories: catalog.categories.map((entry, position) => position === index ? { ...entry, name: { ...entry.name, en: event.target.value } } : entry) }))} />
-                <button type="button" className="pill-button" disabled={used || draft.categories.length < 2} onClick={() => edit((catalog) => ({ ...catalog, categories: catalog.categories.filter((_, position) => position !== index) }))}>{used ? tr("فيه منتجات، انقلها الأول", "Has products: move them first") : tr("حذف القسم", "Delete section")}</button>
+                <button type="button" className="pill-button" disabled={used || draft.categories.length < 2} onClick={() => edit((catalog) => ({ ...catalog, categories: catalog.categories.filter((entry) => entry.id !== category.id) }))}>{tr("حذف القسم", "Remove section")}</button>
               </div>
             );
           })}
-          <button type="button" className="gold-button admin-add" onClick={() => edit((catalog) => ({ ...catalog, categories: [...catalog.categories, { id: `cat-${Date.now().toString(36)}`, icon: "🛍️", name: { ar: "", en: "" } }] }))}>+ {tr("إضافة قسم جديد", "Add a new section")}</button>
+          <button type="button" className="gold-button admin-add" onClick={() => edit((catalog) => ({ ...catalog, categories: [...catalog.categories, { id: `cat-${Date.now().toString(36)}`, icon: "🛍️", name: { ar: "قسم جديد", en: "New section" } }] }))}>+ {tr("إضافة قسم", "Add section")}</button>
         </div>
       )}
 
@@ -286,22 +310,22 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                     {draft.categories.map((category) => <option key={category.id} value={category.id}>{category.name[locale]}</option>)}
                   </select>
                 </div>
-                <label className="admin-check"><input type="checkbox" checked={rule.active !== false} onChange={(event) => update({ active: event.target.checked })} /> {tr("الكود شغال", "Code is active")}</label>
-                <button type="button" className="pill-button" onClick={() => edit((catalog) => { const next = { ...catalog.discountCodes }; delete next[code]; return { ...catalog, discountCodes: next }; })}>{tr("حذف الكود", "Delete code")}</button>
+                <label className="admin-check"><input type="checkbox" checked={rule.active !== false} onChange={(event) => update({ active: event.target.checked })} /> {tr("الكود مفعل", "Code active")}</label>
+                <button type="button" className="pill-button" onClick={() => edit((catalog) => { const next = { ...catalog.discountCodes }; delete next[code]; return { ...catalog, discountCodes: next }; })}>{tr("حذف الكود", "Remove code")}</button>
               </div>
             );
           })}
           <div className="admin-update">
-            <input className="field" dir="ltr" value={newCode} placeholder={tr("كود جديد (حروف وأرقام إنجليزي)", "New code (letters and numbers)")} onChange={(event) => setNewCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} />
-            <button type="button" className="gold-button" disabled={newCode.length < 2 || !!draft.discountCodes[newCode]} onClick={() => { edit((catalog) => ({ ...catalog, discountCodes: { ...catalog.discountCodes, [newCode]: { percent: 10 } } })); setNewCode(""); }}>+ {tr("إضافة الكود", "Add code")}</button>
+            <input className="field" dir="ltr" value={newCode} placeholder={tr("كود جديد", "New code")} onChange={(event) => setNewCode(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))} />
+            <button type="button" className="gold-button" disabled={newCode.length < 2 || !!draft.discountCodes[newCode]} onClick={() => edit((catalog) => ({ ...catalog, discountCodes: { ...catalog.discountCodes, [newCode]: { percent: 5, active: true } } }))}>+ {tr("إضافة الكود", "Add code")}</button>
           </div>
         </div>
       )}
 
       {tab === "offers" && (
         <div className="admin-update">
-          <p className="muted">{tr("شريط عروض بيظهر فوق المتجر لكل الزوار. ولعرض سعر قديم مشطوب، اكتب «السعر قبل الخصم» جوه الباقة في تبويب المنتجات.", "A banner shown at the top of the store. For a crossed-out old price, fill in \"Price before discount\" on a package.")}</p>
-          <label className="admin-check"><input type="checkbox" checked={draft.banner.enabled} onChange={(event) => edit((catalog) => ({ ...catalog, banner: { ...catalog.banner, enabled: event.target.checked } }))} /> {tr("إظهار شريط العروض", "Show the offer banner")}</label>
+          <p className="muted">{tr("شريط عرض يظهر فوق المتجر. لاستخدام سعر قديم مشطوب، اضبط السعر قبل الخصم لكل باقة.", "A promotional banner shown across the store. To show a crossed old price, set an old price on a package.")}</p>
+          <label className="admin-check"><input type="checkbox" checked={draft.banner.enabled} onChange={(event) => edit((catalog) => ({ ...catalog, banner: { ...catalog.banner, enabled: event.target.checked } }))} /> {tr("تفعيل العرض", "Enable offer")}</label>
           <input className="field" value={draft.banner.text.ar} placeholder={tr("نص العرض بالعربي", "Offer text (Arabic)")} onChange={(event) => edit((catalog) => ({ ...catalog, banner: { ...catalog.banner, text: { ...catalog.banner.text, ar: event.target.value } } }))} />
           <input className="field" dir="ltr" value={draft.banner.text.en} placeholder={tr("نص العرض بالإنجليزي", "Offer text (English)")} onChange={(event) => edit((catalog) => ({ ...catalog, banner: { ...catalog.banner, text: { ...catalog.banner.text, en: event.target.value } } }))} />
         </div>
@@ -309,7 +333,7 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
 
       {error && <div className="note admin-error" role="alert">{error}</div>}
       <div className="admin-savebar">
-        <button type="button" className="gold-button" disabled={busy || !dirty} onClick={() => void save()}>{busy ? "..." : dirty ? tr("حفظ التعديلات", "Save changes") : tr("لا توجد تعديلات", "No changes")}</button>
+        <button type="button" className="gold-button" disabled={busy || !dirty} onClick={() => void save()}>{busy ? "..." : dirty ? tr("حفظ التعديلات", "Save changes") : tr("لا توجد تغييرات", "No changes")}</button>
       </div>
     </div>
   );
