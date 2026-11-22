@@ -527,28 +527,6 @@ export default function Storefront() {
   <h1>{t.tagline}</h1>
   <p>{t.subtitle}</p>
 
-  {catalog.banner.enabled && catalog.banner.text[locale] && (
-    <div className="premium-offer">
-      <div className="offer-topline">
-        <span className="offer-dot"></span>
-        <span>VEXORA EXCLUSIVE OFFERS</span>
-        <span className="offer-sparkle">✦</span>
-      </div>
-
-      <div className="offer-message">
-        {catalog.banner.text[locale]}
-      </div>
-
-      <div className="offer-bottom">
-        <span>YOUR DIGITAL WORLD</span>
-        <span>LIMITED OFFERS</span>
-      </div>
-    </div>
-  )}
-
-  <a className="gold-button" href="#store">{t.explore}</a>
-</div>
-
       <main>
         <section id="store" className="content-section store-section">
           <h2 className="section-title">{t.products}</h2>
