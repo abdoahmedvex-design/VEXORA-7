@@ -64,9 +64,6 @@ async function compressImage(file: File): Promise<string> {
   throw new Error("تعذر ضغط الصورة للحجم المطلوب. اختر صورة أصغر.");
 }
 
-  return data;
-}
-
 async function readError(response: Response, fallback: string) {
   try {
     const data = await response.json() as { error?: string };
