@@ -232,6 +232,35 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
                   </div>
                   <label className="muted">{tr("صورة المنتج (من الموبايل)", "Product picture")}</label>
                   <input className="field" type="file" accept="image/*" disabled={busy} onChange={(event) => { void pickImage(product.id, event.target.files?.[0]); event.target.value = ""; }} />
+                  
+                      <div className="admin-thumb">
+                        {pkg.image
+                          // eslint-disable-next-line @next/next/no-img-element
+                          ? <img src={pkg.image} alt={pkg.label[locale]} />
+                          : <span>📦</span>}
+                      </div>
+                      <label className="muted">{tr("صورة الباقة", "Package picture")}</label>
+                      <input
+                        className="field"
+                        type="file"
+                        accept="image/*"
+                        disabled={busy}
+                        onChange={(event) => {
+                          void pickPackageImage(product.id, index, event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                      {pkg.image && (
+                        <button
+                          type="button"
+                          className="pill-button"
+                          disabled={busy}
+                          onClick={() => updatePackage(product.id, index, { image: "" })}
+                        >
+                          {tr("حذف صورة الباقة", "Remove package picture")}
+                        </button>
+                      )}
+
                   {product.image && <button type="button" className="pill-button" onClick={() => updateProduct(product.id, { image: "" })}>{tr("حذف الصورة", "Remove picture")}</button>}
 
                   <label className="muted">{tr("الاسم بالعربي", "Name (Arabic)")}</label>
