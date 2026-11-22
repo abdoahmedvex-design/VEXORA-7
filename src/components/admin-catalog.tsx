@@ -124,6 +124,31 @@ export default function AdminCatalog({ password, locale, notify, onSaved }: {
     }));
     setOpenId(id);
   }
+  async function pickPackageImage(productId: number, index: number, file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      const dataUrl = await compressImage(file);
+      const response = await fetch("/api/admin/image", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ dataUrl }),
+      });
+      if (!response.ok) {
+        setError(await readError(response, tr("تعذر رفع الصورة", "Could not upload the image")));
+        return;
+      }
+      const result = await response.json() as { url: string };
+      updatePackage(productId, index, { image: result.url });
+      notify(tr("تم رفع صورة الباقة، اضغط حفظ", "Package image uploaded, press Save"));
+    } catch {
+      setError(tr("تعذر قراءة الصورة", "Could not read the image"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
 
   async function pickImage(productId: number, file: File | undefined) {
     if (!file) return;
