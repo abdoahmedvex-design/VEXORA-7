@@ -23,22 +23,47 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 }
 
 async function compressImage(file: File): Promise<string> {
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+
+  if (!allowed.includes(file.type.toLowerCase())) {
+    throw new Error("الصيغ المدعومة: JPG و PNG و WEBP فقط.");
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("الصورة أكبر من 8 ميجا.");
+  }
+
   const image = await loadImage(file);
+
   const scale = Math.min(1, 800 / Math.max(image.width, image.height));
   const canvas = document.createElement("canvas");
+
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
+
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas unavailable");
+
   context.fillStyle = "#101010";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
   let quality = 0.85;
-  let data = canvas.toDataURL("image/jpeg", quality);
-  while (data.length > 380000 && quality > 0.4) {
-    quality -= 0.1;
+  let data = "";
+
+  while (quality >= 0.25) {
     data = canvas.toDataURL("image/jpeg", quality);
+
+    if (data.length <= 380000) {
+      return data;
+    }
+
+    quality -= 0.1;
   }
+
+  throw new Error("تعذر ضغط الصورة للحجم المطلوب. اختر صورة أصغر.");
+}
+
   return data;
 }
 
